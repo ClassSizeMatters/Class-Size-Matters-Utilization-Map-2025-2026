@@ -56,7 +56,7 @@
     <body>
 		<!-- TITLE -->
   <h1 style="text-align:center; margin: 10px 0; font-family: Arial, sans-serif; font-size: 24px;">
-    Utilization Rates in New York City Schools (2024–2025)
+    Utilization Rates in New York City Schools (2025-2026)
 	     </h1> 
 	 <!-- MAP INSTRUCTIONS -->
 <div class="map-instructions" style="text-align: center; font-size: 12px; color: #444; margin: 6px 0;">
@@ -1090,6 +1090,17 @@
         bounds_group.addLayer(layer_ElementarySchools_8);
         map.addLayer(layer_ElementarySchools_8);
         var overlaysTree = [
+				   {
+        label: '<strong>Utilization percentage</strong><br />' +
+               '<table>' +
+               '<tr><td><img src="legend/ElementarySchools_8_0500.png" /></td><td>0 - 50%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_50751.png" /></td><td>50 - 75%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_751002.png" /></td><td>75 - 100%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_10011253.png" /></td><td>100 - 125%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_1254.png" /></td><td>125% +</td></tr>' +
+               '</table>'
+    },
+			
             {label: 'Elementary Schools<br /><table><tr><td style="text-align: center;"><img src="legend/ElementarySchools_8_0500.png" /></td><td>0 - 50%</td></tr><tr><td style="text-align: center;"><img src="legend/ElementarySchools_8_50751.png" /></td><td>50 - 75%</td></tr><tr><td style="text-align: center;"><img src="legend/ElementarySchools_8_751002.png" /></td><td>75 - 100%</td></tr><tr><td style="text-align: center;"><img src="legend/ElementarySchools_8_10011253.png" /></td><td>100.1 - 125%</td></tr><tr><td style="text-align: center;"><img src="legend/ElementarySchools_8_1254.png" /></td><td>125% +</td></tr></table>', layer: layer_ElementarySchools_8},
             {label: 'Middle Schools<br /><table><tr><td style="text-align: center;"><img src="legend/MiddleSchools_7_0500.png" /></td><td>0 - 50%</td></tr><tr><td style="text-align: center;"><img src="legend/MiddleSchools_7_50751.png" /></td><td>50 - 75%</td></tr><tr><td style="text-align: center;"><img src="legend/MiddleSchools_7_751002.png" /></td><td>75 - 100%</td></tr><tr><td style="text-align: center;"><img src="legend/MiddleSchools_7_10011253.png" /></td><td>100.1 - 125%</td></tr><tr><td style="text-align: center;"><img src="legend/MiddleSchools_7_1254.png" /></td><td>125% +</td></tr></table>', layer: layer_MiddleSchools_7},
             {label: 'High Schools<br /><table><tr><td style="text-align: center;"><img src="legend/HighSchools_6_0500.png" /></td><td>0 - 50%</td></tr><tr><td style="text-align: center;"><img src="legend/HighSchools_6_50751.png" /></td><td>50 - 75%</td></tr><tr><td style="text-align: center;"><img src="legend/HighSchools_6_751002.png" /></td><td>75 - 100%</td></tr><tr><td style="text-align: center;"><img src="legend/HighSchools_6_10011253.png" /></td><td>100.1 - 125%</td></tr><tr><td style="text-align: center;"><img src="legend/HighSchools_6_1254.png" /></td><td>125% +</td></tr></table>', layer: layer_HighSchools_6},
