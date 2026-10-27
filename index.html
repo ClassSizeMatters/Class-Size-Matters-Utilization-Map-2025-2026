@@ -18,10 +18,54 @@
             padding: 0;
             margin: 0;
         }
+			 .leaflet-tile-pane {
+        pointer-events: none;
+    }	
+ 	h1 {
+        padding: 6px 8px;
+        font-size: 1.5rem;
+        font-family: Arial, Helvetica, sans-serif;
+        background: white;
+        background: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        margin: 0 0 5px;
+        color: #777;
+      }
+/* Expand Leaflet search box to fit text on one line */
+.leaflet-control-search .search-input {
+    width: 260px !important;
+    font-size: 14px;
+}
+			
+/* Optional: improve alignment */
+.leaflet-control-search {
+    box-shadow: none;
+}
+/* Expand clickable hit area on all interactive SVG markers */
+.leaflet-pane path.leaflet-interactive {
+    stroke-width: 40px;
+    stroke-opacity: 0;
+}
+.leaflet-pane path.leaflet-interactive:not(:hover) {
+    stroke-width: 1px;
+    stroke-opacity: 0.5;
+}			
         </style>
         <title></title>
     </head>
     <body>
+		<!-- TITLE -->
+  <h1 style="text-align:center; margin: 10px 0; font-family: Arial, sans-serif; font-size: 24px;">
+    Utilization Rates in New York City Schools (2024–2025)
+	     </h1> 
+	 <!-- MAP INSTRUCTIONS -->
+<div class="map-instructions" style="text-align: center; font-size: 12px; color: #444; margin: 6px 0;">
+    <ul style="display: inline-block; text-align: left; padding-left: 16px; margin: 0;">
+        <li>Search by school name or number using the search bar (may need to search without PS. or I.S). </li>
+        <li>Click the circles to view school utilization and other details. </li>
+        <li>Use the layer controls to turn school types and boundaries on or off.</li>
+    </ul>
+</div> 
         <div id="map">
         </div>
         <script src="js/qgis2web_expressions.js"></script>
