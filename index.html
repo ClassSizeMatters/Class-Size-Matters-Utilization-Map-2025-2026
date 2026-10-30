@@ -1,0 +1,1267 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet-search.css">
+        <link rel="stylesheet" href="css/leaflet.photon.css">
+        <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+			 .leaflet-tile-pane {
+        pointer-events: none;
+    }	
+ 	h1 {
+        padding: 6px 8px;
+        font-size: 1.5rem;
+        font-family: Arial, Helvetica, sans-serif;
+        background: white;
+        background: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        margin: 0 0 5px;
+        color: #777;
+      }
+/* Expand Leaflet search box to fit text on one line */
+.leaflet-control-search .search-input {
+    width: 260px !important;
+    font-size: 14px;
+}
+			
+/* Optional: improve alignment */
+.leaflet-control-search {
+    box-shadow: none;
+}
+/* Expand clickable hit area on all interactive SVG markers */
+.leaflet-pane path.leaflet-interactive {
+    stroke-width: 40px;
+    stroke-opacity: 0;
+}
+.leaflet-pane path.leaflet-interactive:not(:hover) {
+    stroke-width: 1px;
+    stroke-opacity: 0.5;
+}			
+        </style>
+        <title></title>
+    </head>
+    <body>
+		<!-- TITLE -->
+  <h1 style="text-align:center; margin: 10px 0; font-family: Arial, sans-serif; font-size: 24px;">
+    Utilization Rates in New York City Schools (2025-2026)
+	     </h1> 
+	 <!-- MAP INSTRUCTIONS -->
+<div class="map-instructions" style="text-align: center; font-size: 12px; color: #444; margin: 6px 0;">
+    <ul style="display: inline-block; text-align: left; padding-left: 16px; margin: 0;">
+        <li>Search by school name or number using the search bar (may need to search without PS. or I.S). </li>
+        <li>Click the circles to view school utilization and other details. </li>
+        <li>Use the layer controls to turn school types and boundaries on or off.</li>
+    </ul>
+</div> 
+        <div id="map">
+        </div>
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/leaflet-svg-shape-markers.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet.photon.js"></script>
+        <script src="js/leaflet-search.js"></script>
+        <script src="data/CityCouncilDistricts_1.js"></script>
+        <script src="data/SchoolDistricts_2.js"></script>
+        <script src="data/AllSchoolsforSearching_3.js"></script>
+        <script src="data/StandaloneCharterSchools_4.js"></script>
+        <script src="data/CoLocatedCharterSchools_5.js"></script>
+        <script src="data/HighSchools_6.js"></script>
+        <script src="data/MiddleSchools_7.js"></script>
+        <script src="data/ElementarySchools_8.js"></script>
+        <script>
+        var highlightLayer;
+        function highlightFeature(e) {
+            highlightLayer = e.target;
+
+            if (e.target.feature.geometry.type === 'LineString' || e.target.feature.geometry.type === 'MultiLineString') {
+              highlightLayer.setStyle({
+                color: 'rgba(255, 255, 0, 1.00)',
+              });
+            } else {
+              highlightLayer.setStyle({
+                fillColor: 'rgba(255, 255, 0, 1.00)',
+                fillOpacity: 1
+              });
+            }
+        }
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:17, minZoom:1
+        })
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/qgis2web/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // modify popup if contains media
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var imgTd = tempDiv.querySelector('td img');
+            if (imgTd) {
+                var src = imgTd.getAttribute('src');
+                if (/\.(jpg|jpeg|png|gif|bmp|webp|avif)$/i.test(src)) {
+                    popup._contentNode.classList.add('media');
+                    var img = popup._contentNode.querySelector('td img');
+                    if (img) {
+                        // If already loaded (cache), update immediately
+                        if (img.complete && img.naturalHeight > 0) {
+                            popup.update();
+                        } else {
+                            img.addEventListener('load', function() {
+                                popup.update();
+                            });
+                            img.addEventListener('error', function() {
+                                popup.update();
+                            });
+                        }
+                    }
+                } else if (/\.(mp3|wav|ogg|aac)$/i.test(src)) {
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = src;
+                    imgTd.parentNode.replaceChild(audio, imgTd);
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp4|webm|ogg|mov)$/i.test(src)) {
+                    var video = document.createElement('video');
+                    video.controls = true;
+                    video.src = src;
+                    video.style.width = "400px";
+                    video.style.height = "300px";
+                    video.style.maxHeight = "60vh";
+                    video.style.maxWidth = "60vw";
+                    imgTd.parentNode.replaceChild(video, imgTd);
+                    popup._contentNode.classList.add('media');
+                    // Aggiorna il popup quando il video carica i metadati
+                    video.addEventListener('loadedmetadata', function() {
+                        popup.update();
+                    });
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else {
+                    popup._contentNode.classList.remove('media');
+                }
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+            if (bounds_group.getLayers().length) {
+                map.fitBounds(bounds_group.getBounds());
+            }
+            map.setMaxBounds(map.getBounds());
+            map.setMinZoom(map.getZoom());
+        }
+        map.createPane('pane_NeighborhoodView_0');
+        map.getPane('pane_NeighborhoodView_0').style.zIndex = 400;
+        var layer_NeighborhoodView_0 = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+            pane: 'pane_NeighborhoodView_0',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 1,
+            maxZoom: 17,
+            minNativeZoom: 0,
+            maxNativeZoom: 20
+        });
+        layer_NeighborhoodView_0;
+        map.addLayer(layer_NeighborhoodView_0);
+        function pop_CityCouncilDistricts_1(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td class="visible-with-data" id="CounDist" colspan="2"><strong>City Council District:</strong><br />' + (feature.properties['CounDist'] !== null ? autolinker.link(String(feature.properties['CounDist']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_CityCouncilDistricts_1_0() {
+            return {
+                pane: 'pane_CityCouncilDistricts_1',
+                opacity: 1,
+                color: 'rgba(146,11,11,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(133,182,111,0.0)',
+                interactive: false,
+            }
+        }
+        map.createPane('pane_CityCouncilDistricts_1');
+        map.getPane('pane_CityCouncilDistricts_1').style.zIndex = 401;
+        map.getPane('pane_CityCouncilDistricts_1').style['mix-blend-mode'] = 'normal';
+        var layer_CityCouncilDistricts_1 = new L.geoJson(json_CityCouncilDistricts_1, {
+            attribution: '',
+            interactive: false,
+            dataVar: 'json_CityCouncilDistricts_1',
+            layerName: 'layer_CityCouncilDistricts_1',
+            pane: 'pane_CityCouncilDistricts_1',
+            onEachFeature: pop_CityCouncilDistricts_1,
+            style: style_CityCouncilDistricts_1_0,
+        });
+        bounds_group.addLayer(layer_CityCouncilDistricts_1);
+        map.addLayer(layer_CityCouncilDistricts_1);
+        function pop_SchoolDistricts_2(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td class="visible-with-data" id="schooldist" colspan="2"><strong>School District:</strong><br />' + (feature.properties['schooldist'] !== null ? autolinker.link(String(feature.properties['schooldist']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_SchoolDistricts_2_0() {
+            return {
+                pane: 'pane_SchoolDistricts_2',
+                opacity: 1,
+                color: 'rgba(72,123,182,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(114,155,111,0.0)',
+                interactive: false,
+            }
+        }
+        map.createPane('pane_SchoolDistricts_2');
+        map.getPane('pane_SchoolDistricts_2').style.zIndex = 402;
+        map.getPane('pane_SchoolDistricts_2').style['mix-blend-mode'] = 'normal';
+        var layer_SchoolDistricts_2 = new L.geoJson(json_SchoolDistricts_2, {
+            attribution: '',
+            interactive: false,
+            dataVar: 'json_SchoolDistricts_2',
+            layerName: 'layer_SchoolDistricts_2',
+            pane: 'pane_SchoolDistricts_2',
+            onEachFeature: pop_SchoolDistricts_2,
+            style: style_SchoolDistricts_2_0,
+        });
+        bounds_group.addLayer(layer_SchoolDistricts_2);
+        map.addLayer(layer_SchoolDistricts_2);
+        function pop_AllSchoolsforSearching_3(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['School Name'] !== null ? autolinker.link(String(feature.properties['School Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['CSM School Type'] !== null ? autolinker.link(String(feature.properties['CSM School Type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['Primary Address'] !== null ? autolinker.link(String(feature.properties['Primary Address']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['School District'] !== null ? autolinker.link(String(feature.properties['School District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['Council District'] !== null ? autolinker.link(String(feature.properties['Council District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['Utilization'] !== null ? autolinker.link(String(feature.properties['Utilization']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_AllSchoolsforSearching_3_0(feature) {
+            if (feature.properties['q2wHide_Util. Number'] >= 0.000000 && feature.properties['q2wHide_Util. Number'] <= 0.500001 ) {
+                return {
+                pane: 'pane_AllSchoolsforSearching_3',
+                radius: 0.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(70,151,9,1.0)',
+                interactive: false,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.500001 && feature.properties['q2wHide_Util. Number'] <= 0.750000 ) {
+                return {
+                pane: 'pane_AllSchoolsforSearching_3',
+                radius: 0.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(171,221,164,1.0)',
+                interactive: false,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.750000 && feature.properties['q2wHide_Util. Number'] <= 1.000000 ) {
+                return {
+                pane: 'pane_AllSchoolsforSearching_3',
+                radius: 0.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,191,1.0)',
+                interactive: false,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.000000 && feature.properties['q2wHide_Util. Number'] <= 1.250000 ) {
+                return {
+                pane: 'pane_AllSchoolsforSearching_3',
+                radius: 0.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(253,174,97,1.0)',
+                interactive: false,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.250000 && feature.properties['q2wHide_Util. Number'] <= 8.300000 ) {
+                return {
+                pane: 'pane_AllSchoolsforSearching_3',
+                radius: 0.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(215,25,28,1.0)',
+                interactive: false,
+            }
+            }
+        }
+        map.createPane('pane_AllSchoolsforSearching_3');
+        map.getPane('pane_AllSchoolsforSearching_3').style.zIndex = 403;
+        map.getPane('pane_AllSchoolsforSearching_3').style['mix-blend-mode'] = 'normal';
+        var layer_AllSchoolsforSearching_3 = new L.geoJson(json_AllSchoolsforSearching_3, {
+            attribution: '',
+            interactive: false,
+            dataVar: 'json_AllSchoolsforSearching_3',
+            layerName: 'layer_AllSchoolsforSearching_3',
+            pane: 'pane_AllSchoolsforSearching_3',
+            onEachFeature: pop_AllSchoolsforSearching_3,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_AllSchoolsforSearching_3_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_AllSchoolsforSearching_3);
+        function pop_StandaloneCharterSchools_4(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td class="visible-with-data" id="School Name" colspan="2"><strong>School Name:</strong><br />' + (feature.properties['School Name'] !== null ? autolinker.link(String(feature.properties['School Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="CSM School Type" colspan="2"><strong>School Level: </strong><br />' + (feature.properties['CSM School Type'] !== null ? autolinker.link(String(feature.properties['CSM School Type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Primary Address" colspan="2"><strong>Primary Address:</strong><br />' + (feature.properties['Primary Address'] !== null ? autolinker.link(String(feature.properties['Primary Address']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="School District" colspan="2"><strong>School District:</strong><br />' + (feature.properties['School District'] !== null ? autolinker.link(String(feature.properties['School District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Council District" colspan="2"><strong>Council District:</strong><br />' + (feature.properties['Council District'] !== null ? autolinker.link(String(feature.properties['Council District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Utilization" colspan="2"><strong>Utilization Rate:</strong><br />' + (feature.properties['Utilization'] !== null ? autolinker.link(String(feature.properties['Utilization']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_StandaloneCharterSchools_4_0() {
+            return {
+                pane: 'pane_StandaloneCharterSchools_4',
+                shape: 'diamond',
+                radius: 5.2,
+                opacity: 1,
+                color: 'rgba(134,152,172,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 2.0,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(65,163,199,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_StandaloneCharterSchools_4');
+        map.getPane('pane_StandaloneCharterSchools_4').style.zIndex = 404;
+        map.getPane('pane_StandaloneCharterSchools_4').style['mix-blend-mode'] = 'normal';
+        var layer_StandaloneCharterSchools_4 = new L.geoJson(json_StandaloneCharterSchools_4, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_StandaloneCharterSchools_4',
+            layerName: 'layer_StandaloneCharterSchools_4',
+            pane: 'pane_StandaloneCharterSchools_4',
+            onEachFeature: pop_StandaloneCharterSchools_4,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.shapeMarker(latlng, style_StandaloneCharterSchools_4_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_StandaloneCharterSchools_4);
+        map.addLayer(layer_StandaloneCharterSchools_4);
+        function pop_CoLocatedCharterSchools_5(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td class="visible-with-data" id="School Name" colspan="2"><strong>School Name:</strong><br />' + (feature.properties['School Name'] !== null ? autolinker.link(String(feature.properties['School Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="CSM School Type" colspan="2"><strong>School Level: </strong><br />' + (feature.properties['CSM School Type'] !== null ? autolinker.link(String(feature.properties['CSM School Type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Primary Address" colspan="2"><strong>Primary Address:</strong><br />' + (feature.properties['Primary Address'] !== null ? autolinker.link(String(feature.properties['Primary Address']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="School District" colspan="2"><strong>School District:</strong><br />' + (feature.properties['School District'] !== null ? autolinker.link(String(feature.properties['School District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Council District" colspan="2"><strong>Council District:</strong><br />' + (feature.properties['Council District'] !== null ? autolinker.link(String(feature.properties['Council District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Utilization" colspan="2"><strong>Utilization Rate:</strong><br />' + (feature.properties['Utilization'] !== null ? autolinker.link(String(feature.properties['Utilization']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_CoLocatedCharterSchools_5_0(feature) {
+            if (feature.properties['q2wHide_Util. Number'] >= 0.000000 && feature.properties['q2wHide_Util. Number'] <= 0.500001 ) {
+                return {
+                pane: 'pane_CoLocatedCharterSchools_5',
+                shape: 'triangle',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(185,203,212,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(70,151,9,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.500001 && feature.properties['q2wHide_Util. Number'] <= 0.750000 ) {
+                return {
+                pane: 'pane_CoLocatedCharterSchools_5',
+                shape: 'triangle',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(185,203,212,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(171,221,164,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.750000 && feature.properties['q2wHide_Util. Number'] <= 1.000000 ) {
+                return {
+                pane: 'pane_CoLocatedCharterSchools_5',
+                shape: 'triangle',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(185,203,212,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,191,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.000000 && feature.properties['q2wHide_Util. Number'] <= 1.250000 ) {
+                return {
+                pane: 'pane_CoLocatedCharterSchools_5',
+                shape: 'triangle',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(185,203,212,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(253,174,97,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.250000 && feature.properties['q2wHide_Util. Number'] <= 8.300000 ) {
+                return {
+                pane: 'pane_CoLocatedCharterSchools_5',
+                shape: 'triangle',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(185,203,212,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(215,25,28,1.0)',
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_CoLocatedCharterSchools_5');
+        map.getPane('pane_CoLocatedCharterSchools_5').style.zIndex = 405;
+        map.getPane('pane_CoLocatedCharterSchools_5').style['mix-blend-mode'] = 'normal';
+        var layer_CoLocatedCharterSchools_5 = new L.geoJson(json_CoLocatedCharterSchools_5, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_CoLocatedCharterSchools_5',
+            layerName: 'layer_CoLocatedCharterSchools_5',
+            pane: 'pane_CoLocatedCharterSchools_5',
+            onEachFeature: pop_CoLocatedCharterSchools_5,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.shapeMarker(latlng, style_CoLocatedCharterSchools_5_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_CoLocatedCharterSchools_5);
+        map.addLayer(layer_CoLocatedCharterSchools_5);
+        function pop_HighSchools_6(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td class="visible-with-data" id="School Name" colspan="2"><strong>School Name:</strong><br />' + (feature.properties['School Name'] !== null ? autolinker.link(String(feature.properties['School Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="CSM School Type" colspan="2"><strong>School Level: </strong><br />' + (feature.properties['CSM School Type'] !== null ? autolinker.link(String(feature.properties['CSM School Type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Primary Address" colspan="2"><strong>Primary Address:</strong><br />' + (feature.properties['Primary Address'] !== null ? autolinker.link(String(feature.properties['Primary Address']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="School District" colspan="2"><strong>School District:</strong><br />' + (feature.properties['School District'] !== null ? autolinker.link(String(feature.properties['School District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Council District" colspan="2"><strong>Council District:</strong><br />' + (feature.properties['Council District'] !== null ? autolinker.link(String(feature.properties['Council District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Utilization" colspan="2"><strong>Utilization Rate:</strong><br />' + (feature.properties['Utilization'] !== null ? autolinker.link(String(feature.properties['Utilization']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_HighSchools_6_0(feature) {
+            if (feature.properties['q2wHide_Util. Number'] >= 0.000000 && feature.properties['q2wHide_Util. Number'] <= 0.500001 ) {
+                return {
+                pane: 'pane_HighSchools_6',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(70,151,9,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.500001 && feature.properties['q2wHide_Util. Number'] <= 0.750000 ) {
+                return {
+                pane: 'pane_HighSchools_6',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(171,221,164,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.750000 && feature.properties['q2wHide_Util. Number'] <= 1.000000 ) {
+                return {
+                pane: 'pane_HighSchools_6',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,191,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.000000 && feature.properties['q2wHide_Util. Number'] <= 1.250000 ) {
+                return {
+                pane: 'pane_HighSchools_6',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(253,174,97,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.250000 && feature.properties['q2wHide_Util. Number'] <= 8.300000 ) {
+                return {
+                pane: 'pane_HighSchools_6',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(215,25,28,1.0)',
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_HighSchools_6');
+        map.getPane('pane_HighSchools_6').style.zIndex = 406;
+        map.getPane('pane_HighSchools_6').style['mix-blend-mode'] = 'normal';
+        var layer_HighSchools_6 = new L.geoJson(json_HighSchools_6, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_HighSchools_6',
+            layerName: 'layer_HighSchools_6',
+            pane: 'pane_HighSchools_6',
+            onEachFeature: pop_HighSchools_6,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_HighSchools_6_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_HighSchools_6);
+        map.addLayer(layer_HighSchools_6);
+        function pop_MiddleSchools_7(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td class="visible-with-data" id="School Name" colspan="2"><strong>School Name:</strong><br />' + (feature.properties['School Name'] !== null ? autolinker.link(String(feature.properties['School Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="CSM School Type" colspan="2"><strong>School Level: </strong><br />' + (feature.properties['CSM School Type'] !== null ? autolinker.link(String(feature.properties['CSM School Type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Primary Address" colspan="2"><strong>Primary Address:</strong><br />' + (feature.properties['Primary Address'] !== null ? autolinker.link(String(feature.properties['Primary Address']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="School District" colspan="2"><strong>School District:</strong><br />' + (feature.properties['School District'] !== null ? autolinker.link(String(feature.properties['School District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Council District" colspan="2"><strong>Council District:</strong><br />' + (feature.properties['Council District'] !== null ? autolinker.link(String(feature.properties['Council District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Utilization" colspan="2"><strong>Utilization Rate:</strong><br />' + (feature.properties['Utilization'] !== null ? autolinker.link(String(feature.properties['Utilization']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_MiddleSchools_7_0(feature) {
+            if (feature.properties['q2wHide_Util. Number'] >= 0.000000 && feature.properties['q2wHide_Util. Number'] <= 0.500001 ) {
+                return {
+                pane: 'pane_MiddleSchools_7',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(70,151,9,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.500001 && feature.properties['q2wHide_Util. Number'] <= 0.750000 ) {
+                return {
+                pane: 'pane_MiddleSchools_7',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(171,221,164,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.750000 && feature.properties['q2wHide_Util. Number'] <= 1.000000 ) {
+                return {
+                pane: 'pane_MiddleSchools_7',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,191,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.000000 && feature.properties['q2wHide_Util. Number'] <= 1.250000 ) {
+                return {
+                pane: 'pane_MiddleSchools_7',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(253,174,97,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.250000 && feature.properties['q2wHide_Util. Number'] <= 8.300000 ) {
+                return {
+                pane: 'pane_MiddleSchools_7',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(215,25,28,1.0)',
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_MiddleSchools_7');
+        map.getPane('pane_MiddleSchools_7').style.zIndex = 407;
+        map.getPane('pane_MiddleSchools_7').style['mix-blend-mode'] = 'normal';
+        var layer_MiddleSchools_7 = new L.geoJson(json_MiddleSchools_7, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_MiddleSchools_7',
+            layerName: 'layer_MiddleSchools_7',
+            pane: 'pane_MiddleSchools_7',
+            onEachFeature: pop_MiddleSchools_7,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_MiddleSchools_7_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_MiddleSchools_7);
+        map.addLayer(layer_MiddleSchools_7);
+        function pop_ElementarySchools_8(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td class="visible-with-data" id="School Name" colspan="2"><strong>School Name:</strong><br />' + (feature.properties['School Name'] !== null ? autolinker.link(String(feature.properties['School Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="CSM School Type" colspan="2"><strong>School Level: </strong><br />' + (feature.properties['CSM School Type'] !== null ? autolinker.link(String(feature.properties['CSM School Type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Primary Address" colspan="2"><strong>Primary Address:</strong><br />' + (feature.properties['Primary Address'] !== null ? autolinker.link(String(feature.properties['Primary Address']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="School District" colspan="2"><strong>School District:</strong><br />' + (feature.properties['School District'] !== null ? autolinker.link(String(feature.properties['School District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Council District" colspan="2"><strong>Council District:</strong><br />' + (feature.properties['Council District'] !== null ? autolinker.link(String(feature.properties['Council District']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td class="visible-with-data" id="Utilization" colspan="2"><strong>Utilization Rate:</strong><br />' + (feature.properties['Utilization'] !== null ? autolinker.link(String(feature.properties['Utilization']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_ElementarySchools_8_0(feature) {
+            if (feature.properties['q2wHide_Util. Number'] >= 0.000000 && feature.properties['q2wHide_Util. Number'] <= 0.500001 ) {
+                return {
+                pane: 'pane_ElementarySchools_8',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(70,151,9,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.500001 && feature.properties['q2wHide_Util. Number'] <= 0.750000 ) {
+                return {
+                pane: 'pane_ElementarySchools_8',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(171,221,164,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 0.750000 && feature.properties['q2wHide_Util. Number'] <= 1.000000 ) {
+                return {
+                pane: 'pane_ElementarySchools_8',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,255,191,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.000000 && feature.properties['q2wHide_Util. Number'] <= 1.250000 ) {
+                return {
+                pane: 'pane_ElementarySchools_8',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(253,174,97,1.0)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['q2wHide_Util. Number'] >= 1.250000 && feature.properties['q2wHide_Util. Number'] <= 8.300000 ) {
+                return {
+                pane: 'pane_ElementarySchools_8',
+                radius: 4.8,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.7647058823529411)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(215,25,28,1.0)',
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_ElementarySchools_8');
+        map.getPane('pane_ElementarySchools_8').style.zIndex = 408;
+        map.getPane('pane_ElementarySchools_8').style['mix-blend-mode'] = 'normal';
+        var layer_ElementarySchools_8 = new L.geoJson(json_ElementarySchools_8, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_ElementarySchools_8',
+            layerName: 'layer_ElementarySchools_8',
+            pane: 'pane_ElementarySchools_8',
+            onEachFeature: pop_ElementarySchools_8,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_ElementarySchools_8_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_ElementarySchools_8);
+        map.addLayer(layer_ElementarySchools_8);
+        var overlaysTree = [
+				   {
+        label: '<strong>Utilization percentage</strong><br />' +
+               '<table>' +
+               '<tr><td><img src="legend/ElementarySchools_8_0500.png" /></td><td>0 - 50%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_50751.png" /></td><td>50 - 75%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_751002.png" /></td><td>75 - 100%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_10011253.png" /></td><td>100 - 125%</td></tr>' +
+               '<tr><td><img src="legend/ElementarySchools_8_1254.png" /></td><td>125% +</td></tr>' +
+               '</table>'
+    },
+			
+            {label: 'Elementary Schools<br /><table><tr><td style="text-align: center; +</td></tr></table>', layer: layer_ElementarySchools_8},
+            {label: 'Middle Schools<br /><table><tr><td style="text-align: center; +</td></tr></table>', layer: layer_MiddleSchools_7},
+            {label: 'High Schools<br /><table><tr><td style="text-align: center; +</td></tr></table>', layer: layer_HighSchools_6},
+            {label: 'Co-Located Charter Schools<br /><table><tr><td style="text-align: center; +</td></tr></table>', layer: layer_CoLocatedCharterSchools_5},
+            {label: 'Standalone Charter Schools<br /><table><tr><td style="text-align: center; +</td></tr></table>', layer: layer_StandaloneCharterSchools_4},
+            {label: 'School Districts<br /><table><tr><td style="text-align: center; +</td></tr></table>', layer: layer_SchoolDistricts_2},
+            {label: 'City Council Districts<br /><table><tr><td style="text-align: center; +</td></tr></table>', layer: layer_CityCouncilDistricts_1},
+            {label: "Neighborhood View", layer: layer_NeighborhoodView_0},]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: false, 
+        });
+        lay.addTo(map);
+		document.addEventListener("DOMContentLoaded", function() {
+            // set new Layers List height which considers toggle icon
+            function newLayersListHeight() {
+                var layerScrollbarElement = document.querySelector('.leaflet-control-layers-scrollbar');
+                if (layerScrollbarElement) {
+                    var layersListElement = document.querySelector('.leaflet-control-layers-list');
+                    var originalHeight = layersListElement.style.height 
+                        || window.getComputedStyle(layersListElement).height;
+                    var newHeight = parseFloat(originalHeight) - 50;
+                    layersListElement.style.height = newHeight + 'px';
+                }
+            }
+            var isLayersListExpanded = true;
+            var controlLayersElement = document.querySelector('.leaflet-control-layers');
+            var toggleLayerControl = document.querySelector('.leaflet-control-layers-toggle');
+            // toggle Collapsed/Expanded and apply new Layers List height
+            toggleLayerControl.addEventListener('click', function() {
+                if (isLayersListExpanded) {
+                    controlLayersElement.classList.remove('leaflet-control-layers-expanded');
+                } else {
+                    controlLayersElement.classList.add('leaflet-control-layers-expanded');
+                }
+                isLayersListExpanded = !isLayersListExpanded;
+                newLayersListHeight()
+            });	
+			// apply new Layers List height if toggle layerstree
+			if (controlLayersElement) {
+				controlLayersElement.addEventListener('click', function(event) {
+					var toggleLayerHeaderPointer = event.target.closest('.leaflet-layerstree-header-pointer span');
+					if (toggleLayerHeaderPointer) {
+						newLayersListHeight();
+					}
+				});
+			}
+            // Collapsed/Expanded at Start to apply new height
+            setTimeout(function() {
+                toggleLayerControl.click();
+            }, 10);
+            setTimeout(function() {
+                toggleLayerControl.click();
+            }, 10);
+            // Collapsed touch/small screen
+            var isSmallScreen = window.innerWidth < 650;
+            if (isSmallScreen) {
+                setTimeout(function() {
+                    controlLayersElement.classList.remove('leaflet-control-layers-expanded');
+                    isLayersListExpanded = !isLayersListExpanded;
+                }, 500);
+            }  
+        });       
+        setBounds();
+
+        // 🔍 SEARCH-ONLY LAYER: invisible, non-clickable copy of the "All Schools for Searching" data.
+        // (The search plugin adds its layer to the map, so we give it an invisible one
+        // rather than the styled layer, which would otherwise show up on the map.)
+        var searchLayer_AllSchools = new L.geoJson(json_AllSchoolsforSearching_3, {
+            interactive: false,
+            onEachFeature: pop_AllSchoolsforSearching_3,   // keeps the popup for the fallback below
+            pointToLayer: function (feature, latlng) {
+                return L.circleMarker(latlng, {
+                    radius: 1, opacity: 0, fillOpacity: 0, interactive: false
+                });
+            }
+        });
+
+        // 🔎 SEARCH CONTROL
+        var searchControl = new L.Control.Search({
+            layer: searchLayer_AllSchools,
+            propertyName: 'School Name',
+            textPlaceholder: 'Search for a School',
+            autoCollapse: false,
+            autoType: false,
+            hideMarkerOnCollapse: true,
+            // Enable partial / substring search (case-insensitive)
+            filterData: function (text, records) {
+                var result = {};
+                text = text.toLowerCase();
+                for (var key in records) {
+                    if (key.toLowerCase().indexOf(text) !== -1) {
+                        result[key] = records[key];
+                    }
+                }
+                return result;
+            }
+        });
+        map.addControl(searchControl);
+
+        // The visible school layers (the ones with the colored circles/shapes)
+        var schoolTypeLayers = [
+            layer_ElementarySchools_8,
+            layer_MiddleSchools_7,
+            layer_HighSchools_6,
+            layer_CoLocatedCharterSchools_5,
+            layer_StandaloneCharterSchools_4
+        ];
+
+        searchControl.on('search:locationfound', function (e) {
+            // Zoom to the school
+            map.setView(e.latlng, map.getMaxZoom());
+
+            // Find the matching school in the visible layers (same name, nearest to the result)
+            var searchedName = e.layer.feature.properties['School Name'];
+            var match = null;
+            var matchDist = Infinity;
+            schoolTypeLayers.forEach(function (lyr) {
+                if (!map.hasLayer(lyr)) return; // skip layers the user has turned off
+                lyr.eachLayer(function (marker) {
+                    if (marker.feature.properties['School Name'] === searchedName) {
+                        var d = map.distance(e.latlng, marker.getLatLng());
+                        if (d < matchDist) {
+                            matchDist = d;
+                            match = marker;
+                        }
+                    }
+                });
+            });
+
+            if (match) {
+                // Open the school's normal popup
+                match.openPopup();
+            } else if (e.layer.getPopup()) {
+                // Fallback: that school's layer is switched off, so show the
+                // popup from the search layer instead
+                L.popup({ maxHeight: 400 })
+                    .setLatLng(e.latlng)
+                    .setContent(e.layer.getPopup().getContent())
+                    .openOn(map);
+            }
+        });
+
+        // Keep the search box expanded and add the binoculars icon
+        map.whenReady(function () {
+            var searchWrapper = document.getElementsByClassName('leaflet-control-search')[0];
+            if (searchWrapper) {
+                searchWrapper.classList.add('search-expanded');
+                var input = searchWrapper.querySelector('input');
+                if (input) input.style.display = 'block';
+                var searchButton = searchWrapper.querySelector('.search-button');
+                if (searchButton) searchButton.classList.add('fa', 'fa-binoculars');
+            }
+        });
+        </script>        
+    </body>
+</html>
